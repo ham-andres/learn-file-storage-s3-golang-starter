@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
+	"path/filepath"
 	"io"
-	"encoding/base64"
+	"os"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -45,14 +47,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 	
 	mediaType := header.Header.Get("Content-Type")
-	data, err := io.ReadAll(file)
-
-	if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't read the file", err)
-			return 
-	}
-
-	
+	// we are doing this part for verification of the user and the related video
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Video not in database", err)
@@ -62,13 +57,31 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "unauthorized", err)
 		return
 	}
-	imgStr := base64.StdEncoding.EncodeToString(data)
-	dataUrl := fmt.Sprintf("data:%s;base64,%s",mediaType,imgStr)
-	video.ThumbnailURL = &dataUrl
+
+	imgStr := strings.Split(mediaType,"/")
+	fileExtension := "." + imgStr[1]
+	fileName := videoIDString + fileExtension
+	filePath := filepath.Join(cfg.assetsRoot,fileName)
+// maybe we can do this directly. create file first.
+	
+	fileDir, err := os.Create(filePath)
+	if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't create destination folder in local", err)
+			return
+	}
+	defer fileDir.Close()
+
+	_, err = io.Copy(fileDir, file )
+	if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't save the thumbnail", err)
+			return
+	}
+	
+	url := fmt.Sprintf("http://localhost:%s/assets/%s",cfg.port,fileName)
+	video.ThumbnailURL = &url
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
-			delete(videoThumbnails, videoID)
 			respondWithError(w, http.StatusInternalServerError, "Couldn't update the video", err)
 			return
 	}
