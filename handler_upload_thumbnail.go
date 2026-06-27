@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"strings"
-	"path/filepath"
 	"io"
 	"os"
+	"mime"
+
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -46,7 +46,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 	
-	mediaType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Couldn't access Content-Type", err)
+			return
+	}
+	if mediaType != "image/png" && mediaType != "image/jpeg" {
+			respondWithError(w, http.StatusBadRequest, "Invalid file type only images: png or jpeg", err)
+			return
+	}
 	// we are doing this part for verification of the user and the related video
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -57,11 +65,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "unauthorized", err)
 		return
 	}
-
-	imgStr := strings.Split(mediaType,"/")
-	fileExtension := "." + imgStr[1]
-	fileName := videoIDString + fileExtension
-	filePath := filepath.Join(cfg.assetsRoot,fileName)
+	
+	assetPath := getAssetPath(mediaType)	
+	filePath := cfg.getAssetDiskPath(assetPath)
 // maybe we can do this directly. create file first.
 	
 	fileDir, err := os.Create(filePath)
@@ -77,7 +83,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 			return
 	}
 	
-	url := fmt.Sprintf("http://localhost:%s/assets/%s",cfg.port,fileName)
+	url := cfg.getAssetURL(assetPath) 
 	video.ThumbnailURL = &url
 
 	err = cfg.db.UpdateVideo(video)

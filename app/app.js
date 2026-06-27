@@ -261,6 +261,8 @@ function viewVideo(video) {
     thumbnailImg.style.display = 'none';
   } else {
     thumbnailImg.style.display = 'block';
+    // thumbnailImg.src = `${video.thumbnail_url}?v=${Date.now()}`;
+    // cache control brute force way, an alternate way of cache busting with query string 
     thumbnailImg.src = video.thumbnail_url;
   }
 
